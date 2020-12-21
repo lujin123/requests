@@ -12,8 +12,8 @@
 - [x] TRACE
 
 ## TODO
-- [] request middleware
-- [] request retry?
+- [ ] request middleware
+- [ ] request retry?
 
 ## Example
 
