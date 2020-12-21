@@ -11,6 +11,10 @@
 - [x] OPTIONS
 - [x] TRACE
 
+## TODO
+- [] request middleware
+- [] request retry?
+
 ## Example
 
 ```go
@@ -40,7 +44,7 @@ func main() {
 		"key": "abc",
 	}))
 	//使用结构体作为请求参数
-	//参数key使用json的tag,如果不指定json直接使用field name
+	//参数key使用form的tag,如果不指定form直接使用field name
 	query := User{
 		Id:   1,
 		Name: "hello",
