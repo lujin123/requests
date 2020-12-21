@@ -1,20 +1,4 @@
-# requests
-
-## http method
-- [x] GET
-- [x] POST
-- [x] PUT
-- [x] PATCH
-- [x] DELETE
-- [x] HEAD
-- [x] CONNECT
-- [x] OPTIONS
-- [x] TRACE
-
-## Example
-
-```go
-package main
+package examples
 
 import (
 	"bytes"
@@ -106,5 +90,3 @@ func main() {
 	}
 	fmt.Println(buffs.Bytes())
 }
-
-```
