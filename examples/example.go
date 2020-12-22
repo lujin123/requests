@@ -90,3 +90,33 @@ func main() {
 	}
 	fmt.Println(buffs.Bytes())
 }
+
+func middleware() {
+	endpoint := "https://www.baidu.com/"
+	before := []requests.BeforeRequest{
+		func(request *requests.Request) error {
+			ctx := context.WithValue(request.Request.Context(), "token", "1234")
+			request.Request = request.Request.Clone(ctx)
+			fmt.Printf("method=%s, url=%s, body=%s\n", request.Request.Method, request.Request.URL, request.Request.Body)
+			return nil
+		},
+	}
+	after := []requests.AfterRequest{
+		func(resp *requests.Response) error {
+			ctx := resp.Response().Request.Context()
+			fmt.Printf("token=%s\n", ctx.Value("token"))
+			fmt.Printf("resp:%+v\n", resp)
+			return nil
+		},
+	}
+	ctx := context.Background()
+	fmt.Println(ctx)
+	resp, err := requests.Get(ctx, endpoint,
+		requests.WithParam(map[string]string{"id": "1"}),
+		requests.WithBefore(before...),
+		requests.WithAfter(after...))
+	if err != nil {
+		return
+	}
+	fmt.Println(resp.Text())
+}

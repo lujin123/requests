@@ -13,11 +13,17 @@ type (
 )
 
 type dialOptions struct {
-	err     error
-	client  *http.Client
-	headers Value
-	query   string
-	body    io.Reader
+	err       error
+	debug     bool
+	client    *http.Client
+	headers   Value
+	cookies   []*http.Cookie
+	query     string
+	body      io.Reader
+	isSession bool
+	after     []AfterRequest
+	before    []BeforeRequest
+	retry     *retry
 }
 
 func (opts *dialOptions) setContentType(contentType string) {
@@ -32,6 +38,16 @@ func (opts *dialOptions) setHeader(k, v string) {
 }
 
 type DialOption func(opts *dialOptions)
+
+func WithDebug(debug bool) DialOption {
+	return func(opts *dialOptions) {
+		opts.debug = debug
+		if debug {
+			opts.before = append([]BeforeRequest{beforeMiddleLog}, opts.before...)
+			opts.after = append([]AfterRequest{afterMiddleLog}, opts.after...)
+		}
+	}
+}
 
 func WithParam(query Value) DialOption {
 	return func(opts *dialOptions) {
@@ -92,5 +108,43 @@ func WithHeaders(headers Value) DialOption {
 func WithClient(client *http.Client) DialOption {
 	return func(opts *dialOptions) {
 		opts.client = client
+	}
+}
+
+func WithCookies(cookies ...*http.Cookie) DialOption {
+	return func(opts *dialOptions) {
+		opts.cookies = cookies
+	}
+}
+
+//是否清空cookies
+//如果设置成true，后续的请求都会带上前面请求返回的cookie，所以不要随便设置，只有在清楚需要的时候再设置
+func WithSession(session bool) DialOption {
+	return func(opts *dialOptions) {
+		opts.isSession = session
+	}
+}
+
+func WithBefore(middles ...BeforeRequest) DialOption {
+	return func(opts *dialOptions) {
+		opts.before = append(opts.before, middles...)
+	}
+}
+
+func WithAfter(middles ...AfterRequest) DialOption {
+	return func(opts *dialOptions) {
+		opts.after = append(opts.after, middles...)
+	}
+}
+
+func WithRetry(retries ...Retry) DialOption {
+	return func(opts *dialOptions) {
+		var retry Retry
+		if len(retries) > 0 {
+			retry = retries[0]
+		} else {
+			retry = &defaultRetry{}
+		}
+		opts.retry = newRetry(retry)
 	}
 }

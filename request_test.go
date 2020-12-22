@@ -2,6 +2,8 @@ package requests
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"net/http"
 	"testing"
 )
@@ -65,4 +67,68 @@ func TestRequests_Post(t *testing.T) {
 		"abc":   1,
 		"hello": "world",
 	}))
+}
+
+func TestRequests_SetCookie(t *testing.T) {
+	cookies := []*http.Cookie{
+		{
+			Name:  "hello",
+			Value: "123",
+		},
+	}
+	_, _ = Get(context.Background(), host, WithCookies(cookies...))
+	cookies2 := []*http.Cookie{
+		{
+			Name:  "hello2",
+			Value: "456",
+		},
+	}
+	_, _ = Get(context.Background(), host, WithCookies(cookies2...), WithSession(false))
+}
+
+func TestRequests_Middleware(t *testing.T) {
+	before := []BeforeRequest{
+		func(request *Request) error {
+			ctx := context.WithValue(request.Request.Context(), "token", "1234")
+			request.Request = request.Request.Clone(ctx)
+			fmt.Printf("method=%s, url=%s, body=%s\n", request.Request.Method, request.Request.URL, request.Request.Body)
+			return nil
+		},
+	}
+	after := []AfterRequest{
+		func(resp *Response) error {
+			ctx := resp.Response().Request.Context()
+			fmt.Printf("token=%s\n", ctx.Value("token"))
+			fmt.Printf("resp:%+v\n", resp)
+			return nil
+		},
+	}
+	ctx := context.Background()
+	fmt.Println(ctx)
+	_, _ = Get(ctx, host, WithParam(map[string]string{"id": "1"}), WithBefore(before...), WithAfter(after...))
+}
+
+func TestRequests_Retry(t *testing.T) {
+	_, _ = Get(context.Background(), host, WithRetry())
+}
+
+func TestRequest_Debug(t *testing.T) {
+	endpoint := "http://localhost:8080/v1/task/status"
+	r, err := Get(context.Background(),
+		endpoint,
+		WithDebug(true),
+		WithParam(map[string]string{
+			"event": "event",
+		}),
+		WithHeaders(map[string]string{
+			"Authorization": "Bearer xxx",
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var result interface{}
+	if err := r.JSON(&result); err != nil {
+		log.Fatal(err)
+	}
 }
