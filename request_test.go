@@ -58,7 +58,7 @@ func TestRequests_Post(t *testing.T) {
 		"hello": "world",
 	}))
 	//json
-	_, _ = req.Post(context.Background(), host, WithJson(map[string]interface{}{
+	_, _ = req.Post(context.Background(), host, WithJSON(map[string]interface{}{
 		"abc":   1,
 		"hello": "world",
 	}))

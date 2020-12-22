@@ -81,7 +81,7 @@ func WithForm(form Value) DialOption {
 	}
 }
 
-func WithJson(data interface{}) DialOption {
+func WithJSON(data interface{}) DialOption {
 	return func(opts *dialOptions) {
 		buf, err := json.Marshal(data)
 		if err != nil {

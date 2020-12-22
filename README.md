@@ -54,14 +54,14 @@ func main() {
 		Id:   2,
 		Name: "json",
 	}
-	_, _ = requests.Post(context.Background(), endpoint, requests.WithJson(jsonData))
+	_, _ = requests.Post(context.Background(), endpoint, requests.WithJSON(&jsonData))
 
 	//使用xml格式数据作为请求body
 	xmlData := User{
 		Id:   3,
 		Name: "xml",
 	}
-	_, _ = requests.Post(context.Background(), endpoint, requests.WithXML(xmlData))
+	_, _ = requests.Post(context.Background(), endpoint, requests.WithXML(&xmlData))
 
 	//设置请求头
 	headers := map[string]string{
@@ -93,7 +93,7 @@ func main() {
 	fmt.Println(resp.Text())
 	//json
 	var jsonResp interface{}
-	_ = resp.Json(&jsonResp)
+	_ = resp.JSON(&jsonResp)
 	fmt.Println(jsonResp)
 	//xml
 	var xmlResp interface{}
