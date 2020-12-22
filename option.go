@@ -5,11 +5,19 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"os"
+	"path/filepath"
 )
 
 type (
 	Value map[string]string
+	File  struct {
+		Path   string
+		Name   string
+		Extras Value
+	}
 )
 
 type dialOptions struct {
@@ -97,6 +105,13 @@ func WithXML(data interface{}) DialOption {
 	}
 }
 
+//直接设置一个请求body
+func WithBody(body io.Reader) DialOption {
+	return func(opts *dialOptions) {
+		opts.body = body
+	}
+}
+
 func WithHeaders(headers Value) DialOption {
 	return func(opts *dialOptions) {
 		for k, v := range headers {
@@ -146,5 +161,41 @@ func WithRetry(retries ...Retry) DialOption {
 			retry = &defaultRetry{}
 		}
 		opts.retry = newRetry(retry)
+	}
+}
+
+//上传文件
+func WithFile(file *File) DialOption {
+	return func(opts *dialOptions) {
+		f, err := os.Open(file.Path)
+		if err != nil {
+			opts.err = err
+			return
+		}
+		defer f.Close()
+
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile(file.Name, filepath.Base(file.Path))
+		if err != nil {
+			opts.err = err
+			return
+		}
+		if _, err := io.Copy(part, f); err != nil {
+			opts.err = err
+			return
+		}
+
+		for k, v := range file.Extras {
+			_ = writer.WriteField(k, v)
+		}
+
+		if err := writer.Close(); err != nil {
+			opts.err = err
+			return
+		}
+
+		opts.body = &body
+		opts.setContentType(writer.FormDataContentType())
 	}
 }

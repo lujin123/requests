@@ -47,6 +47,9 @@ func main() {
 	}
 	_, _ = requests.Post(context.Background(), endpoint, requests.WithXML(xmlData))
 
+	//直接设置请求body
+	_, _ = requests.Post(context.Background(), endpoint, requests.WithBody(bytes.NewReader([]byte("hello world!"))))
+
 	//设置请求头
 	headers := map[string]string{
 		"Content-Type":  "application/xml",
@@ -77,7 +80,7 @@ func main() {
 	fmt.Println(resp.Text())
 	//json
 	var jsonResp interface{}
-	_ = resp.Json(&jsonResp)
+	_ = resp.JSON(&jsonResp)
 	fmt.Println(jsonResp)
 	//xml
 	var xmlResp interface{}

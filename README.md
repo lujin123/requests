@@ -215,3 +215,39 @@ func main() {
 	}
 }
 ```
+
+## File upload
+
+```go
+package main
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+
+	"github.com/lujin123/requests"
+)
+
+func main() {
+	endpoint := "http://localhost:8080/v1/task/status"
+	_, err := requests.Post(context.Background(),
+		endpoint,
+		requests.WithDebug(true),
+		requests.WithFile(&requests.File{
+			Path: "path to file",
+			Name: "field name",
+			Extras: map[string]string{
+				"author":      "test",
+				"title":       "My Document",
+				"description": "A document with all the Go programming language secrets",
+			},
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+```

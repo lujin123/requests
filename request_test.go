@@ -132,3 +132,23 @@ func TestRequest_Debug(t *testing.T) {
 		log.Fatal(err)
 	}
 }
+
+func TestRequest_File(t *testing.T) {
+	endpoint := "http://localhost:8080/v1/task/status"
+	_, err := Post(context.Background(),
+		endpoint,
+		WithDebug(true),
+		WithFile(&File{
+			Path: "LICENSE",
+			Name: "license",
+			Extras: map[string]string{
+				"author":      "test",
+				"title":       "My Document",
+				"description": "A document with all the Go programming language secrets",
+			},
+		}),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
