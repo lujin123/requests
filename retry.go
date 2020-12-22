@@ -73,9 +73,14 @@ func (r *retry) backoff(fn func() (*http.Response, error)) (*http.Response, erro
 		if err != nil {
 			return nil, err
 		}
+		timer := time.NewTimer(waitTime)
 		select {
-		case <-time.After(waitTime):
+		case <-timer.C:
 		case <-ctx.Done():
+			//close timer and drain the channel
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return nil, ctx.Err()
 		}
 	}
