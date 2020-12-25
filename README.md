@@ -11,6 +11,11 @@
 - [x] OPTIONS
 - [x] TRACE
 
+## Feature
+
+- Middleware
+- Retry
+
 ## Example
 
 ```go
@@ -125,28 +130,37 @@ import (
 
 func main() {
 	endpoint := "https://www.baidu.com/"
-	before := []requests.BeforeRequest{
-		func(request *requests.Request) error {
-			ctx := context.WithValue(request.Request.Context(), "token", "1234")
-			request.Request = request.Request.Clone(ctx)
-			fmt.Printf("method=%s, url=%s, body=%s\n", request.Request.Method, request.Request.URL, request.Request.Body)
-			return nil
-		},
+	var m1 = func() requests.Middleware {
+		return func(next requests.Handler) requests.Handler {
+			return func(client *http.Client, request *http.Request) (response *http.Response, err error) {
+				ctx := context.WithValue(request.Context(), "token", "1234")
+				request = request.Clone(ctx)
+				fmt.Printf("method=%s, url=%s, body=%s\n", request.Method, request.URL, request.Body)
+				resp, err := next(client, request)
+				if err != nil {
+					return resp, err
+				}
+				ctx = resp.Request.Context()
+				fmt.Printf("token=%s\n", ctx.Value("token"))
+				return resp, err
+			}
+		}
 	}
-	after := []requests.AfterRequest{
-		func(resp *requests.Response) error {
-			ctx := resp.Response().Request.Context()
-			fmt.Printf("token=%s\n", ctx.Value("token"))
-			fmt.Printf("resp:%+v\n", resp)
-			return nil
-		},
+	var m2 = func() requests.Middleware {
+		return func(next requests.Handler) requests.Handler {
+			return func(client *http.Client, request *http.Request) (response *http.Response, err error) {
+				fmt.Println("m2 before...")
+				resp, err := next(client, request)
+				fmt.Println("m2 after")
+				return resp, err
+			}
+		}
 	}
-	ctx := context.Background()
-	fmt.Println(ctx)
-	resp, err := requests.Get(ctx, endpoint, 
-		requests.WithParam(map[string]string{"id": "1"}), 
-		requests.WithBefore(before...), 
-		requests.WithAfter(after...))
+	resp, err := requests.Get(context.Background(), endpoint,
+		requests.WithParam(map[string]string{"id": "1"}),
+		requests.WithDebug(true),
+		requests.WithRetry(),
+		requests.WithMiddleware(m1(), m2()))
 	if err != nil {
 		return
 	}

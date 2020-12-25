@@ -3,9 +3,9 @@ package requests
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 	"net/http"
-	"net/http/cookiejar"
+	"net/http/httptrace"
 )
 
 type Http interface {
@@ -18,7 +18,6 @@ type Http interface {
 	Connect(ctx context.Context, url string, opts ...DialOption) (*Response, error)
 	Options(ctx context.Context, url string, opts ...DialOption) (*Response, error)
 	Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error)
-	Do(request *http.Request) (*Response, error)
 }
 
 var _ Http = New()
@@ -61,7 +60,7 @@ func Trace(ctx context.Context, url string, opts ...DialOption) (*Response, erro
 	return defaultReq.do(ctx, http.MethodTrace, url, opts...)
 }
 
-type Request struct {
+type Client struct {
 	opts    dialOptions
 	Request *http.Request
 }
@@ -70,56 +69,57 @@ type Request struct {
 init request client
 eg: New(WithClient(http.DefaultClient))
 */
-func New(opts ...DialOption) *Request {
-	req := &Request{}
+func New(opts ...DialOption) *Client {
+	req := &Client{}
 	for _, opt := range opts {
 		opt(&req.opts)
 	}
 	return req
 }
 
-func (req *Request) Get(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+//session
+func Session(opts ...DialOption) *Client {
+	opts = append(opts, WithSession(true))
+	return New(opts...)
+}
+
+func (req *Client) Get(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodGet, url, opts...)
 }
 
-func (req *Request) Post(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Post(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodPost, url, opts...)
 }
 
-func (req *Request) Put(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Put(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodPut, url, opts...)
 }
 
-func (req *Request) Patch(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Patch(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodPatch, url, opts...)
 }
 
-func (req *Request) Delete(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Delete(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodDelete, url, opts...)
 }
 
-func (req *Request) Head(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Head(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodHead, url, opts...)
 }
 
-func (req *Request) Connect(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Connect(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodConnect, url, opts...)
 }
 
-func (req *Request) Options(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Options(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodOptions, url, opts...)
 }
 
-func (req *Request) Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
+func (req *Client) Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodTrace, url, opts...)
 }
 
-// 用于单独执行一个请求的goroutine，便于自定义请求过程
-func (req *Request) Do(request *http.Request) (*Response, error) {
-	return req.exec(request)
-}
-
-func (req Request) do(ctx context.Context, method string, url string, opts ...DialOption) (*Response, error) {
+func (req Client) do(ctx context.Context, method string, url string, opts ...DialOption) (*Response, error) {
 	for _, opt := range opts {
 		opt(&req.opts)
 	}
@@ -132,6 +132,11 @@ func (req Request) do(ctx context.Context, method string, url string, opts ...Di
 	if req.opts.query != "" {
 		url += "?" + req.opts.query
 	}
+
+	if req.opts.trace != nil {
+		ctx = httptrace.WithClientTrace(ctx, req.opts.trace)
+	}
+
 	request, err := http.NewRequestWithContext(ctx, method, url, req.opts.body)
 	if err != nil {
 		return nil, err
@@ -141,40 +146,44 @@ func (req Request) do(ctx context.Context, method string, url string, opts ...Di
 	for k, v := range req.opts.headers {
 		request.Header.Set(k, v)
 	}
-	//set cookies
-	if !req.opts.isSession {
-		req.opts.client.Jar = nil
-	}
-	if len(req.opts.cookies) > 0 {
-		if req.opts.client.Jar == nil {
-			jar, err := cookiejar.New(nil)
-			if err != nil {
-				return nil, err
-			}
-			req.opts.client.Jar = jar
-		}
-		req.opts.client.Jar.SetCookies(request.URL, req.opts.cookies)
+
+	//set http client
+	client := req.opts.client
+	if client == nil {
+		client = http.DefaultClient
+		req.opts.client = client
 	}
 
-	return req.exec(request)
+	//set cookies
+	if !req.opts.session {
+		client.Jar = nil
+	}
+
+	//debug
+	if req.opts.debug {
+		//debug的日志中间件放在最外层
+		req.opts.middles = append([]Middleware{loggerMiddleware()}, req.opts.middles...)
+	}
+	//将重试的中间件加到最后一个，这样重试的时候执行的代码就是最后请求的方法
+	if req.opts.retry != nil {
+		req.opts.middles = append(req.opts.middles, req.opts.retry)
+	}
+	r, err := Chain(req.opts.middles...)(exec)(client, request)
+	resp := &Response{resp: r}
+
+	return resp, err
 }
 
-func (req *Request) exec(request *http.Request) (*Response, error) {
-	if request.Context() == nil {
-		request = request.Clone(context.Background())
-	}
-	req.Request = request
-	for _, before := range req.opts.before {
-		if err := before(req); err != nil {
-			return nil, err
-		}
-	}
+func exec(client *http.Client, request *http.Request) (*http.Response, error) {
 	c := make(chan error)
-	var resp *Response
+	var (
+		resp *http.Response
+		err  error
+	)
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
-				fmt.Printf("panic: %+v\n", r)
+				log.Printf("http requests panic: \n%+v\n", r)
 				switch x := r.(type) {
 				case string:
 					c <- errors.New(x)
@@ -185,39 +194,12 @@ func (req *Request) exec(request *http.Request) (*Response, error) {
 				}
 			}
 		}()
-		var (
-			r   *http.Response
-			err error
-		)
-		client := req.opts.client
-		if retry := req.opts.retry; retry != nil {
-			r, err = retry.backoff(func() (*http.Response, error) {
-				return client.Do(req.Request)
-			})
-		} else {
-			r, err = client.Do(req.Request)
-		}
 
-		if err != nil {
-			c <- err
-			return
-		}
-		resp = &Response{
-			resp: r,
-		}
-		// request after middleware
-		for _, after := range req.opts.after {
-			if err := after(resp); err != nil {
-				resp = nil
-				c <- err
-				return
-			}
-		}
-
-		c <- nil
+		resp, err = client.Do(request)
+		c <- err
 	}()
 
-	ctx := req.Request.Context()
+	ctx := request.Context()
 	select {
 	case <-ctx.Done():
 		<-c

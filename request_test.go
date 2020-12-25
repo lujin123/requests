@@ -2,6 +2,7 @@ package requests
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -87,25 +88,42 @@ func TestRequests_SetCookie(t *testing.T) {
 }
 
 func TestRequests_Middleware(t *testing.T) {
-	before := []BeforeRequest{
-		func(request *Request) error {
-			ctx := context.WithValue(request.Request.Context(), "token", "1234")
-			request.Request = request.Request.Clone(ctx)
-			fmt.Printf("method=%s, url=%s, body=%s\n", request.Request.Method, request.Request.URL, request.Request.Body)
-			return nil
-		},
+	var m1 = func() Middleware {
+		return func(next Handler) Handler {
+			return func(client *http.Client, request *http.Request) (response *http.Response, err error) {
+				ctx := context.WithValue(request.Context(), "token", "1234")
+				request = request.Clone(ctx)
+				fmt.Printf("method=%s, url=%s, body=%s\n", request.Method, request.URL, request.Body)
+				resp, err := next(client, request)
+				if err != nil {
+					return resp, err
+				}
+				ctx = resp.Request.Context()
+				fmt.Printf("token=%s\n", ctx.Value("token"))
+				return resp, err
+			}
+		}
 	}
-	after := []AfterRequest{
-		func(resp *Response) error {
-			ctx := resp.Response().Request.Context()
-			fmt.Printf("token=%s\n", ctx.Value("token"))
-			fmt.Printf("resp:%+v\n", resp)
-			return nil
-		},
+	var m2 = func() Middleware {
+		return func(next Handler) Handler {
+			return func(client *http.Client, request *http.Request) (response *http.Response, err error) {
+				fmt.Println("m2 before...")
+				token := request.Context().Value("token")
+				fmt.Printf("token=%s\n", token)
+				if token == "1234" {
+					return nil, errors.New("token is hit")
+				}
+				resp, err := next(client, request)
+				fmt.Println("m2 after")
+				return resp, err
+			}
+		}
 	}
-	ctx := context.Background()
-	fmt.Println(ctx)
-	_, _ = Get(ctx, host, WithParam(map[string]string{"id": "1"}), WithBefore(before...), WithAfter(after...))
+	_, _ = Get(context.Background(), host,
+		WithParam(map[string]string{"id": "1"}),
+		WithDebug(true),
+		WithRetry(),
+		WithMiddleware(m1(), m2()))
 }
 
 func TestRequests_Retry(t *testing.T) {

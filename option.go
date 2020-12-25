@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 )
@@ -21,17 +22,17 @@ type (
 )
 
 type dialOptions struct {
-	err       error
-	debug     bool
-	client    *http.Client
-	headers   Value
-	cookies   []*http.Cookie
-	query     string
-	body      io.Reader
-	isSession bool
-	after     []AfterRequest
-	before    []BeforeRequest
-	retry     *retry
+	err     error
+	debug   bool
+	client  *http.Client
+	headers Value
+	cookies []*http.Cookie
+	query   string
+	body    io.Reader
+	session bool
+	middles []Middleware
+	retry   Middleware
+	trace   *httptrace.ClientTrace
 }
 
 func (opts *dialOptions) setContentType(contentType string) {
@@ -47,13 +48,19 @@ func (opts *dialOptions) setHeader(k, v string) {
 
 type DialOption func(opts *dialOptions)
 
+//添加中间件
+//中间件中可以获取到client,Request, Response对象，所以可以对请求做很多的操作
+func WithMiddleware(middles ...Middleware) DialOption {
+	return func(opts *dialOptions) {
+		opts.middles = append(opts.middles, middles...)
+	}
+}
+
+//是否开启debug模式
+//可以在初始化的时候统一设置，也可以给每个请求单独设置
 func WithDebug(debug bool) DialOption {
 	return func(opts *dialOptions) {
 		opts.debug = debug
-		if debug {
-			opts.before = append([]BeforeRequest{beforeMiddleLog}, opts.before...)
-			opts.after = append([]AfterRequest{afterMiddleLog}, opts.after...)
-		}
 	}
 }
 
@@ -112,58 +119,6 @@ func WithBody(body io.Reader) DialOption {
 	}
 }
 
-func WithHeaders(headers Value) DialOption {
-	return func(opts *dialOptions) {
-		for k, v := range headers {
-			opts.setHeader(k, v)
-		}
-	}
-}
-
-func WithClient(client *http.Client) DialOption {
-	return func(opts *dialOptions) {
-		opts.client = client
-	}
-}
-
-func WithCookies(cookies ...*http.Cookie) DialOption {
-	return func(opts *dialOptions) {
-		opts.cookies = cookies
-	}
-}
-
-//是否清空cookies
-//如果设置成true，后续的请求都会带上前面请求返回的cookie，所以不要随便设置，只有在清楚需要的时候再设置
-func WithSession(session bool) DialOption {
-	return func(opts *dialOptions) {
-		opts.isSession = session
-	}
-}
-
-func WithBefore(middles ...BeforeRequest) DialOption {
-	return func(opts *dialOptions) {
-		opts.before = append(opts.before, middles...)
-	}
-}
-
-func WithAfter(middles ...AfterRequest) DialOption {
-	return func(opts *dialOptions) {
-		opts.after = append(opts.after, middles...)
-	}
-}
-
-func WithRetry(retries ...Retry) DialOption {
-	return func(opts *dialOptions) {
-		var retry Retry
-		if len(retries) > 0 {
-			retry = retries[0]
-		} else {
-			retry = &defaultRetry{}
-		}
-		opts.retry = newRetry(retry)
-	}
-}
-
 //上传文件
 func WithFile(file *File) DialOption {
 	return func(opts *dialOptions) {
@@ -197,5 +152,63 @@ func WithFile(file *File) DialOption {
 
 		opts.body = &body
 		opts.setContentType(writer.FormDataContentType())
+	}
+}
+
+//设置请求client
+//一般在创建一个requests的时候才使用
+//中间件中也可以直接替换一个client
+func WithClient(clients ...*http.Client) DialOption {
+	return func(opts *dialOptions) {
+		if len(clients) > 0 {
+			opts.client = clients[0]
+		} else {
+			opts.client = http.DefaultClient
+		}
+	}
+}
+
+//设置cookie
+func WithCookies(cookies ...*http.Cookie) DialOption {
+	return func(opts *dialOptions) {
+		opts.middles = append(opts.middles, cookieMiddleware(cookies...))
+	}
+}
+
+//是否清空cookies
+//如果设置成true，后续的请求都会带上前面请求返回的cookie，所以不要随便设置，只有在确实需要的时候再设置
+func WithSession(session bool) DialOption {
+	return func(opts *dialOptions) {
+		opts.session = session
+	}
+}
+
+//设置请求重试
+//自带一个默认的重试实现，可以自定义实现
+func WithRetry(retries ...Retry) DialOption {
+	return func(opts *dialOptions) {
+		var retry Retry
+		if len(retries) > 0 {
+			retry = retries[0]
+		} else {
+			retry = &defaultRetry{}
+		}
+		opts.retry = retryMiddleware(newRetry(retry))
+	}
+}
+
+//添加请求追踪
+//trace需要自定义
+func WithTrace(trace *httptrace.ClientTrace) DialOption {
+	return func(opts *dialOptions) {
+		opts.trace = trace
+	}
+}
+
+//添加请求头
+//这里设置的headers会
+func WithHeaders(headers Value) DialOption {
+	return func(opts *dialOptions) {
+		opts.middles = append(opts.middles, headerMiddleware(headers))
 	}
 }
