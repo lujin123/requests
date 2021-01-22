@@ -18,6 +18,7 @@ type Http interface {
 	Connect(ctx context.Context, url string, opts ...DialOption) (*Response, error)
 	Options(ctx context.Context, url string, opts ...DialOption) (*Response, error)
 	Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error)
+	Do(ctx context.Context, method, url string, opts ...DialOption) (*Response, error)
 }
 
 var _ Http = New()
@@ -58,6 +59,10 @@ func Options(ctx context.Context, url string, opts ...DialOption) (*Response, er
 
 func Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return defaultReq.do(ctx, http.MethodTrace, url, opts...)
+}
+
+func Do(ctx context.Context, method, url string, opts ...DialOption) (*Response, error) {
+	return defaultReq.do(ctx, method, url, opts...)
 }
 
 type Client struct {
@@ -117,6 +122,10 @@ func (req *Client) Options(ctx context.Context, url string, opts ...DialOption) 
 
 func (req *Client) Trace(ctx context.Context, url string, opts ...DialOption) (*Response, error) {
 	return req.do(ctx, http.MethodTrace, url, opts...)
+}
+
+func (req *Client) Do(ctx context.Context, method, url string, opts ...DialOption) (*Response, error) {
+	return req.do(ctx, method, url, opts...)
 }
 
 func (req Client) do(ctx context.Context, method string, url string, opts ...DialOption) (*Response, error) {
