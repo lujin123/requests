@@ -102,10 +102,7 @@ func (r *defaultRetry) MaxWaitTime() time.Duration {
 func (r *defaultRetry) RetryConditions() []RetryCondition {
 	return []RetryCondition{
 		func(resp *http.Response, err error) bool {
-			if err != nil {
-				return true
-			}
-			return false
+			return err != nil
 		},
 	}
 }

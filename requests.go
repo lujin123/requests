@@ -2,8 +2,6 @@ package requests
 
 import (
 	"context"
-	"errors"
-	"log"
 	"net/http"
 	"net/http/httptrace"
 )
@@ -82,7 +80,7 @@ func New(opts ...DialOption) *Client {
 	return req
 }
 
-//session
+// session
 func Session(opts ...DialOption) *Client {
 	opts = append(opts, WithSession(true))
 	return New(opts...)
@@ -177,43 +175,11 @@ func (req Client) do(ctx context.Context, method string, url string, opts ...Dia
 	if req.opts.retry != nil {
 		req.opts.middles = append(req.opts.middles, req.opts.retry)
 	}
-	r, err := Chain(req.opts.middles...)(exec)(client, request)
-	resp := &Response{resp: r}
-
-	return resp, err
-}
-
-func exec(client *http.Client, request *http.Request) (*http.Response, error) {
-	c := make(chan error)
-	var (
-		resp *http.Response
-		err  error
-	)
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("http requests panic: \n%+v\n", r)
-				switch x := r.(type) {
-				case string:
-					c <- errors.New(x)
-				case error:
-					c <- x
-				default:
-					c <- errors.New("unknown panic")
-				}
-			}
-		}()
-
-		resp, err = client.Do(request)
-		c <- err
-	}()
-
-	ctx := request.Context()
-	select {
-	case <-ctx.Done():
-		<-c
-		return nil, ctx.Err()
-	case err := <-c:
-		return resp, err
+	r, err := Chain(req.opts.middles...)(func(client *http.Client, request *http.Request) (*http.Response, error) {
+		return client.Do(request)
+	})(client, request)
+	if err != nil {
+		return nil, err
 	}
+	return &Response{resp: r}, nil
 }
